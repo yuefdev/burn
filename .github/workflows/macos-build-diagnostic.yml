@@ -1,0 +1,40 @@
+name: macOS build diagnostic
+
+on:
+  push:
+    branches: [ci-diagnose-macos-build-scripts]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 25
+    env:
+      CARGO_INCREMENTAL: "0"
+      RUSTFLAGS: "-Cinstrument-coverage"
+      LLVM_PROFILE_FILE: "burn-%p-%m.profraw"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Compiler and runner
+        run: |
+          rustc -vV
+          cargo -vV
+          uname -a
+          xcrun clang --version
+      - name: Compile the failing target directly
+        run: |
+          set -o pipefail
+          cargo test --lib --bins --examples -p burn-wgpu --features metal --release --no-run -vv 2>&1 | tee macos-build.log
+      - name: Inspect build scripts
+        if: ${{ !cancelled() }}
+        run: |
+          find target/release/build -name build-script-build -path '*cubecl*' -exec file {} \;
+          find target/release/build -name build-script-build -path '*cubecl*' -exec ls -l {} \;
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: macos-build-diagnostic
+          path: macos-build.log
